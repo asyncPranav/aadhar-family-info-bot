@@ -1,0 +1,15 @@
+{
+  "name": "aadhar-info-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2",
+    "node-telegram-bot-api": "^0.66.0"
+  }
+}
