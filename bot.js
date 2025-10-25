@@ -16,10 +16,12 @@ if (!TOKEN || !API_BASE || !ACCESS_CODE) {
 }
 
 const bot = new TelegramBot(TOKEN, { polling: true });
-console.log("✅ Aadhaar Info Bot started. SHOW_SENSITIVE =", SHOW_SENSITIVE);
+console.log("✅ Aadhaar Family Info Bot started. SHOW_SENSITIVE =", SHOW_SENSITIVE);
 
-// Authorized users in memory
+// Authorized users with query tracking
+// Structure: authorizedUsers[chatId] = { authorized: true, queries: 0 }
 const authorizedUsers = {};
+let totalLookups = 0;
 
 // Utility functions
 function maskString(str, keepLast = 4) {
@@ -41,7 +43,7 @@ function safeLine(label, value) {
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(
     msg.chat.id,
-    `👋 Hello ${msg.chat.first_name || ""}!\n\nWelcome to the **Aadhaar Info Bot** 🔍\n\nPlease enter your **access code** to continue.`,
+    `👋 Hello ${msg.chat.first_name || ""}!\n\nWelcome to the **Aadhaar Family Info Bot** 🔍\n\nPlease enter your **access code** to continue.`,
     { parse_mode: "Markdown" }
   );
 });
@@ -49,9 +51,31 @@ bot.onText(/\/start/, (msg) => {
 bot.onText(/\/help/, (msg) => {
   bot.sendMessage(
     msg.chat.id,
-    "📘 **How to use:**\n1. Send your access code.\n2. Once authorized, send any Aadhaar *family ID* to fetch details.\n\nExample: `116440054586`",
+    "📘 **How to use:**\n1. Send your access code.\n2. Once authorized, send any Aadhaar *family ID* to fetch details.\n\nExample: `116440054586`\n\n📊 Use /stats to see your queries and bot stats.",
     { parse_mode: "Markdown" }
   );
+});
+
+// /stats command
+bot.onText(/\/stats/, (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!authorizedUsers[chatId] || !authorizedUsers[chatId].authorized) {
+    return bot.sendMessage(chatId, "🚫 You must be authorized to see stats. Enter the access code first.");
+  }
+
+  const totalUsers = Object.keys(authorizedUsers).length;
+  const userQueries = authorizedUsers[chatId].queries || 0;
+
+  const statsMsg = `
+📊 *Bot Stats:*
+────────────────────
+👤 Authorized Users: ${totalUsers}
+📈 Your Queries: ${userQueries}
+🌐 Total Lookups: ${totalLookups}
+`;
+
+  bot.sendMessage(chatId, statsMsg, { parse_mode: "Markdown" });
 });
 
 // Message handler
@@ -64,7 +88,7 @@ bot.on("message", async (msg) => {
   // Authorization check
   if (!authorizedUsers[chatId]) {
     if (text === ACCESS_CODE) {
-      authorizedUsers[chatId] = true;
+      authorizedUsers[chatId] = { authorized: true, queries: 0 };
       bot.sendMessage(chatId, "✅ Access Granted! You can now send Aadhaar family IDs to fetch info.");
     } else {
       bot.sendMessage(chatId, "🔒 Access Restricted. Please enter the correct access code.");
@@ -72,7 +96,7 @@ bot.on("message", async (msg) => {
     return;
   }
 
-  // Input validation (Aadhaar family ID)
+  // Validate Aadhaar family ID
   if (!/^\d{6,15}$/.test(text)) {
     bot.sendMessage(chatId, "⚠️ Please send a valid Aadhaar family ID (digits only). Example: `116440054586`");
     return;
@@ -81,7 +105,6 @@ bot.on("message", async (msg) => {
   try {
     await bot.sendMessage(chatId, "🔍 Fetching Aadhaar family info...");
 
-    // Fetch data
     const url = `${API_BASE}${encodeURIComponent(text)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -91,6 +114,10 @@ bot.on("message", async (msg) => {
       bot.sendMessage(chatId, "❌ No data found for this Aadhaar family ID.");
       return;
     }
+
+    // Increment counters
+    authorizedUsers[chatId].queries++;
+    totalLookups++;
 
     // Extract details
     const address = SHOW_SENSITIVE ? data.address : maskString(data.address, 6);
@@ -124,7 +151,7 @@ bot.on("message", async (msg) => {
     await bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
 
   } catch (err) {
-    console.error("Error:", err);
+    console.error("❌ Error:", err);
     bot.sendMessage(chatId, `❌ Failed to fetch data: ${err.message}`);
   }
 });
